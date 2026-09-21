@@ -1,4 +1,4 @@
-# svelte-clean-template
+# Parkov
 
 A clean static webapp template: **Svelte 5 + Vite + TailwindCSS 4 + PWA**, managed with **Bun**,
 with **GitHub Actions CI + GitHub Pages deploy** built in.
