@@ -27,9 +27,9 @@ export default defineConfig(() => {
         registerType: "autoUpdate",
         includeAssets: ["favicon.svg", "apple-touch-icon.png"],
         manifest: {
-          name: "Svelte Clean Template",
-          short_name: "Clean",
-          description: "A clean static Svelte + Tailwind PWA template.",
+          name: "Parkov — find your parking spot",
+          short_name: "Parkov",
+          description: "Markov-chain predictions for the best parking spot, by day and hour.",
           theme_color: "#0f172a",
           background_color: "#0f172a",
           display: "standalone",
