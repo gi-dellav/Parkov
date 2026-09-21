@@ -1,0 +1,137 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Geist Variable", "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, "SFMono-Regular", monospace;
+}
+
+body {
+  background: #fff;
+  color: var(--color-neutral-900);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--color-neutral-900);
+  color: #fff;
+}
+
+@layer components {
+  .page {
+    @apply mx-auto flex min-h-dvh w-full max-w-xl flex-col justify-center px-6 py-24;
+  }
+
+  .eyebrow {
+    @apply font-mono text-xs tracking-widest text-neutral-400 uppercase;
+  }
+
+  .title {
+    @apply mt-6 text-4xl font-medium tracking-[-0.02em] text-balance text-neutral-900 sm:text-5xl sm:leading-[1.05];
+  }
+
+  .lede {
+    @apply mt-4 max-w-md text-[17px] leading-7 text-neutral-500;
+  }
+
+  .meta {
+    @apply mt-8 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-neutral-500;
+  }
+
+  .dot {
+    @apply size-0.5 rounded-full bg-neutral-300;
+  }
+
+  .actions {
+    @apply mt-8 flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-neutral-200 pt-8;
+  }
+
+  .section {
+    @apply mt-12 border-t border-neutral-200 pt-8;
+  }
+
+  .h2 {
+    @apply text-lg font-medium tracking-tight text-neutral-900;
+  }
+
+  .body {
+    @apply mt-3 max-w-md text-[15px] leading-7 text-neutral-500;
+  }
+
+  .link-inline {
+    @apply text-neutral-900 underline decoration-neutral-300 underline-offset-4 transition hover:decoration-neutral-500;
+  }
+
+  .pre {
+    @apply mt-4 max-w-md overflow-x-auto rounded-2xl border border-neutral-200 bg-neutral-950 px-4 py-3.5 font-mono text-[13px] leading-6 text-neutral-200;
+  }
+
+  .code {
+    @apply rounded-md border border-neutral-200 bg-neutral-100 px-1.5 py-0.5 font-mono text-[0.85em] text-neutral-700;
+  }
+
+  .pre .code,
+  pre .code {
+    @apply rounded-none border-0 bg-transparent p-0 text-inherit;
+  }
+
+  .steps {
+    @apply mt-5 flex max-w-md flex-col gap-4;
+  }
+
+  .steps li {
+    @apply flex flex-col gap-1 text-[15px] leading-7 text-neutral-500;
+  }
+
+  .step-title {
+    @apply font-medium text-neutral-900;
+  }
+
+  .step-body {
+    @apply text-neutral-500;
+  }
+
+  .note {
+    @apply mt-5 max-w-md rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-[13px] leading-6 text-neutral-500;
+  }
+
+  .footnote {
+    @apply mt-16 font-mono text-xs text-neutral-400;
+  }
+
+  .footer {
+    @apply mt-8 flex justify-center border-t border-neutral-200 pt-8;
+  }
+
+  .github-link {
+    @apply inline-flex items-center gap-2 font-mono text-xs text-neutral-400 transition hover:text-neutral-900;
+  }
+
+  .github-icon {
+    @apply size-4;
+  }
+
+  .btn-primary {
+    @apply rounded-full bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white tabular-nums transition hover:bg-neutral-700 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900;
+  }
+
+  .link-quiet {
+    @apply text-sm text-neutral-500 underline decoration-neutral-200 underline-offset-4 transition hover:text-neutral-900 hover:decoration-neutral-400;
+  }
+
+  .toast {
+    @apply fixed inset-x-0 bottom-6 z-50 mx-auto flex w-[min(92%,24rem)] items-center justify-between gap-4 rounded-full border border-neutral-200 bg-white/90 py-2 pr-2 pl-5 shadow-sm backdrop-blur;
+  }
+
+  .toast-text {
+    @apply text-[13px] text-neutral-500;
+  }
+
+  .toast-btn-solid {
+    @apply shrink-0 rounded-full bg-neutral-900 px-4 py-1.5 text-[13px] font-medium text-white transition hover:bg-neutral-700;
+  }
+
+  .toast-btn-quiet {
+    @apply shrink-0 rounded-full px-3 py-1.5 text-[13px] font-medium text-neutral-400 transition hover:text-neutral-900;
+  }
+}
