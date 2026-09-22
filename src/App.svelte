@@ -169,6 +169,7 @@
   let newSpotName = $state("");
   let showSettings = $state(false);
   let showAddSpot = $state(false);
+  let aboutOpen = $state(false);
 
   function submitLocation() {
     const name = newLocName.trim();
@@ -218,7 +219,8 @@
       </form>
     </section>
   {:else}
-    <!-- locations -->
+    <!-- locations (only shown when there is a choice to make) -->
+    {#if store.locations.length > 1}
     <nav class="mt-10 flex max-w-full flex-wrap items-center justify-center gap-2" aria-label="Locations">
       {#each store.locations as loc (loc.id)}
         <button
@@ -231,6 +233,7 @@
         </button>
       {/each}
     </nav>
+    {/if}
 
     {#if location}
       {#if parkedSpot}
@@ -557,8 +560,51 @@
   {/if}
 
   <footer class="mt-16">
-    <p class="text-[11px]">Parkov · data stays on this device</p>
+    <div class="info-wrap">
+      <button
+        type="button"
+        class="info-text"
+        aria-label="About Parkov"
+        aria-expanded={aboutOpen}
+        onclick={() => (aboutOpen = !aboutOpen)}
+      >
+        info
+      </button>
+      {#if aboutOpen}
+        <div class="about-card-top" role="dialog" aria-label="About Parkov">
+          <p class="about-title">Parkov</p>
+          <p class="about-sub">Built by Giuseppe Della Vedova</p>
+          <div class="about-links">
+            <a
+              class="about-link"
+              href="https://github.com/gi-dellav/Parkov"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              GitHub
+            </a>
+            <a
+              class="about-link"
+              href="https://www.linkedin.com/in/giuseppe-della-vedova-a2890a413/"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              LinkedIn
+            </a>
+          </div>
+        </div>
+      {/if}
+    </div>
   </footer>
 </main>
+
+<svelte:window
+  onkeydown={(e) => {
+    if (e.key === "Escape") aboutOpen = false;
+  }}
+  onclick={(e) => {
+    if (aboutOpen && !(e.target as HTMLElement).closest(".info-wrap")) aboutOpen = false;
+  }}
+/>
 
 <PwaUpdate />
