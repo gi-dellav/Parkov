@@ -60,9 +60,6 @@
     }
     return rankSpots(bySpot, locSpots.map((s) => s.id), ctx);
   });
-  const bestId = $derived(ranked[0]?.spotId ?? null);
-  const bestSpot = $derived(locSpots.find((s) => s.id === bestId) ?? null);
-  const bestPred = $derived(bestId ? predictFree(locObs.filter((o) => o.spotId === bestId), ctx) : null);
 
   function predFor(spotId: string) {
     return predictFree(
@@ -71,28 +68,99 @@
     );
   }
 
+  // --- single-recommendation hunt ---
+  // Only the top candidate is shown. Pressing "Full" logs "occupied"
+  // and advances to the next candidate. A spot marked full in this hunt
+  // is never re-suggested until the user parks somewhere (new hunt) or
+  // every spot has been tried (exhausted state).
+  let skippedIds = $state<string[]>([]);
+  let parkedId = $state<string | null>(null);
+  let showAll = $state(false);
+
   // --- feedback ---
-  let lastFeedback = $state<{ id: string; spotName: string; state: SpotState } | null>(null);
+  let lastFeedback = $state<{
+    id: string;
+    spotId: string;
+    spotName: string;
+    state: SpotState;
+  } | null>(null);
   let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
 
-  function flashFeedback(f: { id: string; spotName: string; state: SpotState }) {
+  // New location → fresh hunt.
+  $effect(() => {
+    void selectedLocationId;
+    skippedIds = [];
+    parkedId = null;
+    showAll = false;
+    lastFeedback = null;
+  });
+
+  const candidates = $derived(ranked.filter((r) => !skippedIds.includes(r.spotId)));
+  const current = $derived(parkedId ? null : (candidates[0] ?? null));
+  const currentSpot = $derived(
+    current ? (locSpots.find((s) => s.id === current.spotId) ?? null) : null,
+  );
+  const currentPred = $derived(current ? predFor(current.spotId) : null);
+  const exhausted = $derived(
+    !parkedId && ranked.length > 0 && candidates.length === 0,
+  );
+  const parkedSpot = $derived(
+    parkedId ? (locSpots.find((s) => s.id === parkedId) ?? null) : null,
+  );
+  const position = $derived(
+    current ? ranked.findIndex((r) => r.spotId === current.spotId) + 1 : 0,
+  );
+
+  function flashFeedback(f: {
+    id: string;
+    spotId: string;
+    spotName: string;
+    state: SpotState;
+  }) {
     lastFeedback = f;
     if (feedbackTimer) clearTimeout(feedbackTimer);
     feedbackTimer = setTimeout(() => (lastFeedback = null), 8_000);
   }
 
-  function logResult(spotId: string, state: SpotState) {
+  function logParked(spotId: string) {
     if (!selectedLocationId) return;
     const spot = locSpots.find((s) => s.id === spotId);
     if (!spot) return;
-    const obs = recordObservation(selectedLocationId, spotId, state, new Date());
+    const obs = recordObservation(selectedLocationId, spotId, "free", new Date());
     now = new Date();
-    flashFeedback({ id: obs.id, spotName: spot.name, state });
+    // A successful park ends the hunt: previously-full spots become
+    // eligible again for the next hunt.
+    parkedId = spotId;
+    skippedIds = [];
+    showAll = false;
+    flashFeedback({ id: obs.id, spotId, spotName: spot.name, state: "free" });
+  }
+
+  function logFull(spotId: string) {
+    if (!selectedLocationId) return;
+    const spot = locSpots.find((s) => s.id === spotId);
+    if (!spot) return;
+    const obs = recordObservation(selectedLocationId, spotId, "occupied", new Date());
+    now = new Date();
+    if (!skippedIds.includes(spotId)) skippedIds = [...skippedIds, spotId];
+    flashFeedback({ id: obs.id, spotId, spotName: spot.name, state: "occupied" });
   }
 
   function undoLast() {
     if (!lastFeedback) return;
-    undoObservation(lastFeedback.id);
+    const { id, spotId, state } = lastFeedback;
+    undoObservation(id);
+    if (state === "occupied") {
+      skippedIds = skippedIds.filter((s) => s !== spotId);
+    } else {
+      if (parkedId === spotId) parkedId = null;
+    }
+    lastFeedback = null;
+  }
+
+  function startOver() {
+    skippedIds = [];
+    parkedId = null;
     lastFeedback = null;
   }
 
@@ -100,6 +168,7 @@
   let newLocName = $state("");
   let newSpotName = $state("");
   let showSettings = $state(false);
+  let showAddSpot = $state(false);
 
   function submitLocation() {
     const name = newLocName.trim();
@@ -114,6 +183,7 @@
     const name = newSpotName.trim();
     addSpot(selectedLocationId, name || `Spot ${locSpots.length + 1}`);
     newSpotName = "";
+    showAddSpot = false;
   }
 </script>
 
@@ -163,25 +233,54 @@
     </nav>
 
     {#if location}
-      {#if bestSpot && bestPred}
-        <!-- best bet -->
+      {#if parkedSpot}
+        <!-- parked confirmation -->
+        <section class="mt-14 flex w-full flex-col items-center" aria-label="Parked">
+          <p class="text-xs tracking-[0.25em] uppercase">{location.name}</p>
+          <h2 class="mt-4 text-4xl font-medium tracking-tight">{parkedSpot.name}</h2>
+          <p class="mt-3 text-sm">Parked — nice.</p>
+          <div class="mt-8 flex w-full max-w-xs flex-col gap-3">
+            <button
+              type="button"
+              onclick={startOver}
+              class="w-full rounded-full border border-black bg-black px-4 py-3.5 text-sm font-medium text-white active:scale-[0.99]"
+            >
+              Find another spot
+            </button>
+          </div>
+          {#if lastFeedback}
+            <p class="mt-4 text-xs">
+              Logged Parked at {lastFeedback.spotName}
+              <button type="button" class="ml-2 underline underline-offset-4" onclick={undoLast}>
+                Undo
+              </button>
+            </p>
+          {/if}
+        </section>
+      {:else if currentSpot && currentPred && current}
+        <!-- single best bet -->
         <section class="mt-14 flex w-full flex-col items-center" aria-label="Best spot">
           <p class="text-xs tracking-[0.25em] uppercase">{location.name}</p>
-          <h2 class="mt-4 text-4xl font-medium tracking-tight">{bestSpot.name}</h2>
-          <p class="mt-2 text-7xl font-medium tabular-nums">{formatPct(bestPred.pFree)}</p>
-          <p class="mt-3 text-xs">free · {bestPred.totalObs} logs</p>
+          <h2 class="mt-4 text-4xl font-medium tracking-tight">{currentSpot.name}</h2>
+          <p class="mt-2 text-7xl font-medium tabular-nums">{formatPct(currentPred.pFree)}</p>
+          <p class="mt-3 text-xs">
+            free · {currentPred.totalObs} logs
+            {#if ranked.length > 1}
+              <span class="text-black/50">· {position} of {ranked.length}</span>
+            {/if}
+          </p>
 
           <div class="mt-8 grid w-full max-w-xs grid-cols-2 gap-3">
             <button
               type="button"
-              onclick={() => bestId && logResult(bestId, "free")}
+              onclick={() => logParked(current.spotId)}
               class="rounded-full border border-black bg-black px-4 py-3.5 text-sm font-medium text-white active:scale-[0.99]"
             >
               Parked
             </button>
             <button
               type="button"
-              onclick={() => bestId && logResult(bestId, "occupied")}
+              onclick={() => logFull(current.spotId)}
               class="rounded-full border border-black bg-white px-4 py-3.5 text-sm font-medium text-black active:scale-[0.99]"
             >
               Full
@@ -196,57 +295,141 @@
               </button>
             </p>
           {/if}
-        </section>
 
-        <!-- all spots -->
-        <section class="mt-14 flex w-full flex-col items-center" aria-label="All spots">
-          <ul class="flex w-full max-w-xs flex-col items-center">
+          {#if skippedIds.length > 0}
+            <p class="mt-3 text-[11px] text-black/50">
+              Skipped {skippedIds.length} full spot{skippedIds.length === 1 ? "" : "s"}
+            </p>
+          {/if}
+
+          <!-- optional full ranking -->
+          {#if ranked.length > 1}
+            <button
+              type="button"
+              class="mt-8 text-xs underline underline-offset-4"
+              onclick={() => (showAll = !showAll)}
+              aria-expanded={showAll}
+            >
+              {showAll ? "Hide all spots" : `See all spots (${ranked.length})`}
+            </button>
+            {#if showAll}
+              <ul class="mt-4 flex w-full max-w-xs flex-col items-center">
+                {#each candidates as r (r.spotId)}
+                  {@const spot = locSpots.find((s) => s.id === r.spotId)}
+                  {@const p = predFor(r.spotId)}
+                  {#if spot}
+                    <li class="w-full border-t border-black/15 py-4 last:border-b">
+                      <p class="text-sm font-medium">
+                        {spot.name}{r.spotId === current.spotId ? " · current" : ""}
+                      </p>
+                      <p class="mt-1 text-2xl tabular-nums">{formatPct(r.pFree)}</p>
+                      <p class="mt-1 text-[11px] text-black/50">{p.totalObs} logs</p>
+                      {#if r.spotId !== current.spotId}
+                        <div class="mt-3 grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onclick={() => logParked(spot.id)}
+                            class="rounded-full border border-black bg-white px-3 py-2 text-xs font-medium"
+                          >
+                            Parked
+                          </button>
+                          <button
+                            type="button"
+                            onclick={() => logFull(spot.id)}
+                            class="rounded-full border border-black bg-white px-3 py-2 text-xs font-medium"
+                          >
+                            Full
+                          </button>
+                        </div>
+                      {/if}
+                    </li>
+                  {/if}
+                {/each}
+              </ul>
+            {/if}
+          {/if}
+
+          <!-- add spot -->
+          <div class="mt-8 flex w-full max-w-xs flex-col items-center">
+            {#if !showAddSpot}
+              <button
+                type="button"
+                class="text-xs underline underline-offset-4"
+                onclick={() => (showAddSpot = true)}
+              >
+                + Add spot
+              </button>
+            {:else}
+              <form
+                class="flex w-full flex-row items-center gap-2"
+                onsubmit={(e) => {
+                  e.preventDefault();
+                  submitSpot();
+                }}
+              >
+                <input
+                  class="min-w-0 flex-1 rounded-full border border-black bg-white px-5 py-2.5 text-center text-sm outline-none placeholder:text-black/40"
+                  placeholder="New spot name"
+                  bind:value={newSpotName}
+                  maxlength={60}
+                />
+                <button type="submit" class="shrink-0 rounded-full border border-black bg-black px-5 py-2.5 text-sm font-medium text-white">
+                  Add
+                </button>
+                <button
+                  type="button"
+                  class="shrink-0 px-2 py-2 text-xs underline underline-offset-4"
+                  onclick={() => {
+                    showAddSpot = false;
+                    newSpotName = "";
+                  }}
+                >
+                  Cancel
+                </button>
+              </form>
+            {/if}
+          </div>
+        </section>
+      {:else if exhausted}
+        <!-- every spot tried -->
+        <section class="mt-14 flex w-full flex-col items-center" aria-label="All full">
+          <p class="text-xs tracking-[0.25em] uppercase">{location.name}</p>
+          <h2 class="mt-4 text-3xl font-medium tracking-tight">All spots full</h2>
+          <p class="mt-3 text-sm text-black/60">You tried all {ranked.length} spots.</p>
+          <div class="mt-8 flex w-full max-w-xs flex-col gap-3">
+            <button
+              type="button"
+              onclick={startOver}
+              class="w-full rounded-full border border-black bg-black px-4 py-3.5 text-sm font-medium text-white active:scale-[0.99]"
+            >
+              Start over
+            </button>
+          </div>
+          {#if lastFeedback}
+            <p class="mt-4 text-xs">
+              Logged {lastFeedback.state === "free" ? "Parked" : "Full"} at {lastFeedback.spotName}
+              <button type="button" class="ml-2 underline underline-offset-4" onclick={undoLast}>
+                Undo
+              </button>
+            </p>
+          {/if}
+          <ul class="mt-8 flex w-full max-w-xs flex-col items-center">
             {#each ranked as r (r.spotId)}
               {@const spot = locSpots.find((s) => s.id === r.spotId)}
-              {@const p = predFor(r.spotId)}
               {#if spot}
-                <li class="w-full border-t border-black py-4 last:border-b">
-                  <p class="text-sm font-medium">{spot.name}</p>
-                  <p class="mt-1 text-2xl tabular-nums">{formatPct(r.pFree)}</p>
-                  <div class="mt-3 grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onclick={() => logResult(spot.id, "free")}
-                      class="rounded-full border border-black bg-white px-3 py-2 text-xs font-medium"
-                    >
-                      Parked
-                    </button>
-                    <button
-                      type="button"
-                      onclick={() => logResult(spot.id, "occupied")}
-                      class="rounded-full border border-black bg-white px-3 py-2 text-xs font-medium"
-                    >
-                      Full
-                    </button>
-                  </div>
-                  <p class="mt-2 text-[11px]">{p.totalObs} logs</p>
+                <li class="flex w-full items-center justify-between border-t border-black/15 py-3 last:border-b">
+                  <span class="text-sm">{spot.name}</span>
+                  <button
+                    type="button"
+                    onclick={() => logParked(spot.id)}
+                    class="rounded-full border border-black bg-white px-4 py-1.5 text-xs font-medium"
+                  >
+                    Parked here
+                  </button>
                 </li>
               {/if}
             {/each}
           </ul>
-
-          <form
-            class="mt-8 flex w-full max-w-xs flex-col items-center gap-3"
-            onsubmit={(e) => {
-              e.preventDefault();
-              submitSpot();
-            }}
-          >
-            <input
-              class="w-full rounded-full border border-black bg-white px-5 py-2.5 text-center text-sm outline-none placeholder:text-black/40"
-              placeholder="New spot"
-              bind:value={newSpotName}
-              maxlength={60}
-            />
-            <button type="submit" class="w-full rounded-full border border-black bg-white px-5 py-2.5 text-sm font-medium">
-              Add spot
-            </button>
-          </form>
         </section>
       {:else}
         <!-- location has no spots yet -->
@@ -273,75 +456,100 @@
         </section>
       {/if}
 
-      <!-- compressed settings -->
+      <!-- settings -->
       <div class="mt-16 flex w-full max-w-xs flex-col items-center">
         <button
           type="button"
           class="text-xs underline underline-offset-4"
           onclick={() => (showSettings = !showSettings)}
+          aria-expanded={showSettings}
         >
           {showSettings ? "Hide settings" : "Settings"}
         </button>
         {#if showSettings}
-          <div class="mt-6 flex w-full flex-col items-center gap-3">
-            <form
-              class="flex w-full flex-col items-center gap-3"
-              onsubmit={(e) => {
-                e.preventDefault();
-                submitLocation();
-              }}
-            >
-              <input
-                class="w-full rounded-full border border-black bg-white px-5 py-2.5 text-center text-sm outline-none placeholder:text-black/40"
-                placeholder="New location"
-                bind:value={newLocName}
-                maxlength={60}
-              />
-              <button type="submit" class="w-full rounded-full border border-black bg-white px-5 py-2.5 text-sm">
-                Add location
-              </button>
-            </form>
-            <button
-              type="button"
-              class="w-full rounded-full border border-black bg-white px-5 py-2.5 text-sm"
-              onclick={() => {
-                if (confirm(`Delete "${location.name}" and all its spots + history?`)) deleteLocation(location.id);
-              }}
-            >
-              Delete this location
-            </button>
-            {#each locSpots as s (s.id)}
-              <button
-                type="button"
-                class="text-xs underline underline-offset-4"
-                onclick={() => {
-                  if (confirm(`Delete spot "${s.name}"?`)) deleteSpot(s.id);
+          <div class="mt-6 w-full rounded-3xl border border-black/15 px-5 py-6 text-left">
+            <section aria-label="Locations">
+              <h3 class="text-[11px] font-medium tracking-[0.2em] uppercase text-black/50">Locations</h3>
+              <form
+                class="mt-3 flex w-full flex-row items-center gap-2"
+                onsubmit={(e) => {
+                  e.preventDefault();
+                  submitLocation();
                 }}
               >
-                Delete {s.name}
-              </button>
-            {/each}
-            <button
-              type="button"
-              class="text-xs underline underline-offset-4"
-              onclick={() => {
-                if (confirm("Clear this location's history?")) clearHistory(selectedLocationId ?? undefined);
-              }}
-            >
-              Clear history
-            </button>
-            <button
-              type="button"
-              class="text-xs underline underline-offset-4"
-              onclick={() => {
-                if (confirm("Delete everything and start blank?")) {
-                  resetAll();
-                  selectedLocationId = null;
-                }
-              }}
-            >
-              Reset all
-            </button>
+                <input
+                  class="min-w-0 flex-1 rounded-full border border-black/25 bg-white px-4 py-2 text-sm outline-none placeholder:text-black/40 focus:border-black"
+                  placeholder="New location"
+                  bind:value={newLocName}
+                  maxlength={60}
+                />
+                <button type="submit" class="shrink-0 rounded-full border border-black bg-white px-4 py-2 text-xs font-medium">
+                  Add
+                </button>
+              </form>
+            </section>
+
+            {#if locSpots.length > 0}
+              <section class="mt-6 border-t border-black/10 pt-5" aria-label="Spots">
+                <h3 class="text-[11px] font-medium tracking-[0.2em] uppercase text-black/50">
+                  Spots · {locSpots.length}
+                </h3>
+                <ul class="mt-2 divide-y divide-black/10">
+                  {#each locSpots as s (s.id)}
+                    <li class="flex items-center justify-between gap-3 py-2.5">
+                      <span class="truncate text-sm">{s.name}</span>
+                      <button
+                        type="button"
+                        class="shrink-0 text-xs text-black/50 underline underline-offset-4 hover:text-black"
+                        onclick={() => {
+                          if (confirm(`Delete spot "${s.name}"?`)) deleteSpot(s.id);
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </li>
+                  {/each}
+                </ul>
+              </section>
+            {/if}
+
+            <section class="mt-6 border-t border-black/10 pt-5" aria-label="Danger zone">
+              <h3 class="text-[11px] font-medium tracking-[0.2em] uppercase text-black/50">Data</h3>
+              <div class="mt-3 flex flex-col gap-2">
+                <button
+                  type="button"
+                  class="w-full rounded-full border border-black/25 bg-white px-4 py-2.5 text-xs"
+                  onclick={() => {
+                    if (confirm(`Delete "${location.name}" and all its spots + history?`)) deleteLocation(location.id);
+                  }}
+                >
+                  Delete this location
+                </button>
+                <div class="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    class="rounded-full border border-black/25 bg-white px-4 py-2.5 text-xs"
+                    onclick={() => {
+                      if (confirm("Clear this location's history?")) clearHistory(selectedLocationId ?? undefined);
+                    }}
+                  >
+                    Clear history
+                  </button>
+                  <button
+                    type="button"
+                    class="rounded-full border border-black/25 bg-white px-4 py-2.5 text-xs"
+                    onclick={() => {
+                      if (confirm("Delete everything and start blank?")) {
+                        resetAll();
+                        selectedLocationId = null;
+                      }
+                    }}
+                  >
+                    Reset all
+                  </button>
+                </div>
+              </div>
+            </section>
           </div>
         {/if}
       </div>

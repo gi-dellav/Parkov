@@ -6,11 +6,12 @@
 // With Laplace smoothing we get a transition matrix, and the stationary
 // probability of Free is the context-conditional free-spot estimate.
 //
-// Because per-(dow, window) data is sparse, we blend four levels:
+  // Because per-(dow, window) data is sparse, we blend five levels:
 //   L1 dow+window   e.g. "Mon 09–12"      (most specific)
-//   L2 kind+window  e.g. "weekday 09–12"
-//   L3 window only  e.g. "09–12 any day"
-//   L4 spot global  (all observations for the spot)
+//   L2 kind+window  e.g. "weekday 09–12"  (model-only, hidden in UI)
+//   L3 phase+window e.g. "morning 09–12"
+//   L4 window only  e.g. "09–12 any day"
+//   L5 spot global  (all observations for the spot)
 //   L0 uniform 0.5 prior
 // Weights favour specific data when it exists, and fall back gracefully.
 
@@ -27,6 +28,7 @@ export interface Observation {
   hour: number;
   window: number;
   kind: "weekday" | "weekend";
+  phase: "morning" | "afternoon" | "evening" | "night";
   state: SpotState;
 }
 
@@ -139,7 +141,7 @@ function level(
   };
 }
 
-const LEVEL_WEIGHT = [1, 0.5, 0.25, 0.125];
+const LEVEL_WEIGHT = [1, 0.5, 0.5, 0.25, 0.125];
 
 export function predictFree(
   observations: Observation[],
@@ -150,6 +152,7 @@ export function predictFree(
   const levels: LevelEstimate[] = [
     level(sorted, (o) => o.dow === ctx.dow && o.window === ctx.window, dowKey, "day + window"),
     level(sorted, (o) => o.kind === ctx.kind && o.window === ctx.window, `${ctx.kind}@${ctx.window}`, `${ctx.kind} + window`),
+    level(sorted, (o) => o.phase === ctx.phase && o.window === ctx.window, `${ctx.phase}@${ctx.window}`, `${ctx.phase} + window`),
     level(sorted, (o) => o.window === ctx.window, `w${ctx.window}`, "window only"),
     level(sorted, () => true, "all", "spot overall"),
   ];

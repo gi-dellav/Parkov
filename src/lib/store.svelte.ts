@@ -49,6 +49,14 @@ function load(): Persisted {
     }
     const parsed = JSON.parse(raw) as Persisted;
     if (!parsed.locations || !parsed.spots || !parsed.observations) throw new Error("bad shape");
+    // Backfill daytime phase for observations saved before phase existed.
+    for (const o of parsed.observations) {
+      if (!("phase" in o) || !(o as Observation).phase) {
+        const h = typeof o.hour === "number" ? o.hour : new Date(o.ts).getHours();
+        (o as Observation).phase =
+          h >= 5 && h < 12 ? "morning" : h >= 12 && h < 17 ? "afternoon" : h >= 17 && h < 22 ? "evening" : "night";
+      }
+    }
     return parsed;
   } catch {
     const empty = emptyStore();
@@ -130,6 +138,7 @@ export function recordObservation(
     hour: at.getHours(),
     window: ctx.window,
     kind: ctx.kind,
+    phase: ctx.phase,
     state,
   };
   observations = [...observations, obs];
