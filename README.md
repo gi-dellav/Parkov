@@ -1,4 +1,15 @@
-# Parkov
+<p align="center">
+  <img src="logo.svg" width="96" height="96" alt="Parkov logo" />
+</p>
+
+<h1 align="center">Parkov</h1>
+
+<p align="center">Markov-chain predictions for the best parking spot, by day and hour.</p>
+
+<p align="center">
+  <a href="https://gi-dellav.github.io/Parkov/">Live demo</a> ·
+  <a href="https://github.com/gi-dellav/Parkov">GitHub</a>
+</p>
 
 A clean static webapp template: **Svelte 5 + Vite + TailwindCSS 4 + PWA**, managed with **Bun**,
 with **GitHub Actions CI + GitHub Pages deploy** built in.
